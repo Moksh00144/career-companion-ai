@@ -7,8 +7,19 @@ from app.services.prompt_templates import get_system_prompt
 
 class LLMService:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self._client = None
         self.model = settings.OPENAI_MODEL
+
+    @property
+    def client(self) -> AsyncOpenAI:
+        if self._client is None:
+            if not settings.OPENAI_API_KEY:
+                raise ValueError(
+                    "OpenAI API key not configured. "
+                    "Set OPENAI_API_KEY in your .env file or environment variables."
+                )
+            self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        return self._client
 
     async def stream_response(
         self,
