@@ -16,6 +16,24 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * Converts snake_case keys to camelCase recursively.
+ */
+function toCamelCase(obj: unknown): unknown {
+  if (Array.isArray(obj)) {
+    return obj.map(toCamelCase)
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+      result[camelKey] = toCamelCase(value)
+    }
+    return result
+  }
+  return obj
+}
+
 async function request<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { params, ...fetchOptions } = options
 
@@ -41,7 +59,8 @@ async function request<T>(endpoint: string, options: FetchOptions = {}): Promise
     throw new ApiError(response.status, error.detail || 'Request failed')
   }
 
-  return response.json()
+  const data = await response.json()
+  return toCamelCase(data) as T
 }
 
 export const api = {
@@ -71,11 +90,70 @@ export const api = {
   getMessages: (conversationId: string) =>
     request<import('@/types/chat').Message[]>(`/conversations/${conversationId}/messages`),
 
-  // Streaming - returns EventSource
-  createStreamUrl: (conversationId: string, content: string, mode?: string): string => {
-    const params = new URLSearchParams({ content })
-    if (mode) params.set('mode', mode)
-    return `${API_BASE}/conversations/${conversationId}/stream?${params.toString()}`
+  // Streaming - uses fetch with custom headers (EventSource can't send headers)
+  streamChat: (
+    conversationId: string,
+    content: string,
+    mode: string,
+    onChunk: (token: string) => void,
+    onDone: () => void,
+    onError: (error: string) => void,
+  ): AbortController => {
+    const controller = new AbortController()
+    const params = new URLSearchParams({ content, mode })
+
+    fetch(`${API_BASE}/conversations/${conversationId}/stream?${params.toString()}`, {
+      headers: { 'X-Session-Id': getSessionId() },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          onError(`HTTP ${response.status}`)
+          return
+        }
+
+        const reader = response.body?.getReader()
+        if (!reader) {
+          onError('No response body')
+          return
+        }
+
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                if (data.type === 'chunk') {
+                  onChunk(data.token)
+                } else if (data.type === 'done') {
+                  onDone()
+                } else if (data.type === 'error') {
+                  onError(data.error || 'Stream error')
+                }
+              } catch {
+                // ignore parse errors
+              }
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          onError(err.message || 'Connection error')
+        }
+      })
+
+    return controller
   },
 
   // Documents
@@ -88,7 +166,8 @@ export const api = {
       body: formData,
     })
     if (!response.ok) throw new ApiError(response.status, 'Upload failed')
-    return response.json()
+    const data = await response.json()
+    return toCamelCase(data) as { id: string; filename: string; createdAt: string }
   },
 
   getDocuments: () =>

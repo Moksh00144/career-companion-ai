@@ -9,15 +9,19 @@ export function useChat() {
     messages,
     isStreaming,
     currentConversation,
+    conversations,
     setMessages,
     addMessage,
     updateLastMessage,
     setIsStreaming,
     setCurrentConversation,
+    setConversations,
+    addConversation,
+    removeConversation,
     clearStreamContent,
   } = useChatStore()
 
-  const eventSourceRef = useRef<EventSource | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const sendMessage = useCallback(
     async (content: string, mode: ConversationMode = 'general') => {
@@ -64,45 +68,40 @@ export function useChat() {
       }
       addMessage(aiMessage)
 
-      // Connect to SSE stream
-      const streamUrl = api.createStreamUrl(conversationId, content, mode)
-
-      // Close previous connection
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
+      // Cancel previous stream
+      if (abortRef.current) {
+        abortRef.current.abort()
       }
 
-      const eventSource = new EventSource(streamUrl)
-      eventSourceRef.current = eventSource
-
-      eventSource.addEventListener('chunk', (e: MessageEvent) => {
-        try {
-          const { token } = JSON.parse(e.data)
+      // Connect to SSE stream via fetch
+      abortRef.current = api.streamChat(
+        conversationId,
+        content,
+        mode,
+        // onChunk
+        (token: string) => {
           useChatStore.getState().appendStreamContent(token)
           useChatStore.getState().updateLastMessage(
             useChatStore.getState().streamContent
           )
-        } catch {
-          // ignore parse errors
+        },
+        // onDone
+        () => {
+          setIsStreaming(false)
+          clearStreamContent()
+          abortRef.current = null
+        },
+        // onError
+        () => {
+          setIsStreaming(false)
+          clearStreamContent()
+          abortRef.current = null
         }
-      })
-
-      eventSource.addEventListener('done', () => {
-        setIsStreaming(false)
-        clearStreamContent()
-        eventSource.close()
-      })
-
-      eventSource.addEventListener('error', () => {
-        setIsStreaming(false)
-        clearStreamContent()
-        eventSource.close()
-      })
+      )
     },
     [
       currentConversation,
       isStreaming,
-      setMessages,
       addMessage,
       updateLastMessage,
       setIsStreaming,
@@ -124,21 +123,52 @@ export function useChat() {
     }
   }, [setCurrentConversation, setMessages])
 
+  const loadConversations = useCallback(async () => {
+    try {
+      const result = await api.getConversations({ limit: '50', offset: '0' })
+      setConversations(result.conversations)
+    } catch {
+      // handle error
+    }
+  }, [setConversations])
+
+  const deleteConversation = useCallback(async (id: string) => {
+    try {
+      await api.deleteConversation(id)
+      removeConversation(id)
+      if (currentConversation?.id === id) {
+        setCurrentConversation(null)
+        setMessages([])
+      }
+    } catch {
+      // handle error
+    }
+  }, [removeConversation, currentConversation, setCurrentConversation, setMessages])
+
   const cancelStream = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-      eventSourceRef.current = null
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
     }
     setIsStreaming(false)
     clearStreamContent()
   }, [setIsStreaming, clearStreamContent])
 
+  const newConversation = useCallback(() => {
+    setCurrentConversation(null)
+    setMessages([])
+  }, [setCurrentConversation, setMessages])
+
   return {
     messages,
     isStreaming,
     currentConversation,
+    conversations,
     sendMessage,
     loadConversation,
+    loadConversations,
+    deleteConversation,
     cancelStream,
+    newConversation,
   }
 }

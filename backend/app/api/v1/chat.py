@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation import Conversation, Message
 from app.models.user import UserProfile, CareerProfile, Activity
-from app.schemas.chat import ConversationCreate, ConversationResponse, MessageResponse
+from app.schemas.chat import ConversationCreate
 from app.services.llm_service import llm_service
 from app.api.deps import get_session_id, get_db_session
 
@@ -29,7 +29,6 @@ async def get_or_create_user(session: AsyncSession, session_id: str) -> UserProf
         session.add(user)
         await session.flush()
 
-        # Create initial career profile
         career = CareerProfile(
             id=uuid.uuid4(),
             user_id=user.id,
@@ -55,9 +54,32 @@ async def get_user_context(session: AsyncSession, user_id: uuid.UUID) -> dict:
         "years_experience": user.years_experience or 0,
         "skills": user.skills or [],
         "interests": user.interests or [],
-        "resume_text": (user.resume_text or "")[:2000],  # Truncate for token limits
+        "resume_text": (user.resume_text or "")[:2000],
     }
     return context
+
+
+def _serialize_conv(conv: Conversation, msg_count: int = 0, last_message: str | None = None) -> dict:
+    return {
+        "id": str(conv.id),
+        "title": conv.title,
+        "mode": conv.mode,
+        "is_archived": conv.is_archived,
+        "created_at": conv.created_at.isoformat() if conv.created_at else None,
+        "updated_at": conv.updated_at.isoformat() if conv.updated_at else None,
+        "message_count": msg_count,
+        "last_message": last_message,
+    }
+
+
+def _serialize_msg(msg: Message) -> dict:
+    return {
+        "id": str(msg.id),
+        "conversation_id": str(msg.conversation_id),
+        "role": msg.role,
+        "content": msg.content,
+        "created_at": msg.created_at.isoformat() if msg.created_at else None,
+    }
 
 
 @router.get("/conversations")
@@ -68,9 +90,8 @@ async def list_conversations(
     db: AsyncSession = Depends(get_db_session),
 ):
     """List conversations for a session."""
-    user = await get_or_create_user(db, session_id)
+    await get_or_create_user(db, session_id)
 
-    # Get total count
     count_result = await db.execute(
         select(func.count(Conversation.id))
         .where(Conversation.session_id == session_id)
@@ -78,7 +99,6 @@ async def list_conversations(
     )
     total = count_result.scalar()
 
-    # Get conversations
     result = await db.execute(
         select(Conversation)
         .where(Conversation.session_id == session_id)
@@ -89,7 +109,6 @@ async def list_conversations(
     )
     conversations = result.scalars().all()
 
-    # Enrich with message count and last message
     enriched = []
     for conv in conversations:
         msg_result = await db.execute(
@@ -106,16 +125,11 @@ async def list_conversations(
         )
         msg_count = msg_count_result.scalar()
 
-        enriched.append({
-            "id": str(conv.id),
-            "title": conv.title,
-            "mode": conv.mode,
-            "is_archived": conv.is_archived,
-            "created_at": conv.created_at,
-            "updated_at": conv.updated_at,
-            "message_count": msg_count,
-            "last_message": last_msg.content[:100] if last_msg else None,
-        })
+        enriched.append(_serialize_conv(
+            conv,
+            msg_count=msg_count,
+            last_message=last_msg.content[:100] if last_msg else None,
+        ))
 
     return {"conversations": enriched, "total": total}
 
@@ -127,7 +141,7 @@ async def create_conversation(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Create a new conversation."""
-    user = await get_or_create_user(db, session_id)
+    await get_or_create_user(db, session_id)
 
     conversation = Conversation(
         id=uuid.uuid4(),
@@ -138,16 +152,7 @@ async def create_conversation(
     db.add(conversation)
     await db.flush()
 
-    return {
-        "id": str(conversation.id),
-        "title": conversation.title,
-        "mode": conversation.mode,
-        "is_archived": conversation.is_archived,
-        "created_at": conversation.created_at,
-        "updated_at": conversation.updated_at,
-        "message_count": 0,
-        "last_message": None,
-    }
+    return _serialize_conv(conversation)
 
 
 @router.get("/conversations/{conversation_id}")
@@ -164,14 +169,7 @@ async def get_conversation(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    return {
-        "id": str(conversation.id),
-        "title": conversation.title,
-        "mode": conversation.mode,
-        "is_archived": conversation.is_archived,
-        "created_at": conversation.created_at,
-        "updated_at": conversation.updated_at,
-    }
+    return _serialize_conv(conversation)
 
 
 @router.delete("/conversations/{conversation_id}")
@@ -199,16 +197,7 @@ async def get_messages(
     )
     messages = result.scalars().all()
 
-    return [
-        {
-            "id": str(msg.id),
-            "conversation_id": str(msg.conversation_id),
-            "role": msg.role,
-            "content": msg.content,
-            "created_at": msg.created_at,
-        }
-        for msg in messages
-    ]
+    return [_serialize_msg(msg) for msg in messages]
 
 
 @router.get("/conversations/{conversation_id}/stream")
@@ -223,7 +212,6 @@ async def stream_chat(
     user = await get_or_create_user(db, session_id)
     user_context = await get_user_context(db, user.id)
 
-    # Verify conversation exists
     conv_result = await db.execute(
         select(Conversation).where(Conversation.id == conversation_id)
     )
@@ -240,7 +228,7 @@ async def stream_chat(
     )
     db.add(user_message)
 
-    # Get message history for context
+    # Get message history
     history_result = await db.execute(
         select(Message)
         .where(Message.conversation_id == conversation_id)
@@ -248,7 +236,6 @@ async def stream_chat(
     )
     history_messages = history_result.scalars().all()
 
-    # Prepare messages for LLM
     messages_for_llm = [
         {"role": msg.role, "content": msg.content}
         for msg in history_messages
@@ -263,7 +250,7 @@ async def stream_chat(
                 user_context=user_context,
             ):
                 full_response += token
-                yield f"event: chunk\ndata: {json.dumps({'token': token})}\n\n"
+                yield f"data: {json.dumps({'type': 'chunk', 'token': token})}\n\n"
 
             # Save assistant message
             if full_response:
@@ -276,14 +263,15 @@ async def stream_chat(
                 db.add(ai_message)
                 await db.commit()
 
-            # Update conversation timestamp
             conversation.updated_at = datetime.utcnow()
             await db.commit()
 
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
         except Exception as e:
-            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
         finally:
-            yield "event: done\ndata: {}\n\n"
+            yield f"data: {json.dumps({'type': 'close'})}\n\n"
 
     return StreamingResponse(
         generate(),
