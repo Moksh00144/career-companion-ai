@@ -1,9 +1,13 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, Integer, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from app.config.database import Base
 from app.models.types import GUID
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class UserProfile(Base):
@@ -20,8 +24,8 @@ class UserProfile(Base):
     target_role = Column(String(255))
     resume_text = Column(Text)
     resume_filename = Column(String(255))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     career_profile = relationship(
         "CareerProfile",
@@ -33,6 +37,12 @@ class UserProfile(Base):
         "Activity",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    memories = relationship(
+        "MemoryEntry",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="MemoryEntry.importance.desc(), MemoryEntry.updated_at.desc()",
     )
 
 
@@ -53,8 +63,8 @@ class CareerProfile(Base):
     overall_health = Column(Integer, default=0)
     last_interview_at = Column(DateTime)
     last_resume_analysis_at = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     user = relationship("UserProfile", back_populates="career_profile")
 
@@ -73,6 +83,6 @@ class Activity(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text)
     score = Column(Integer)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     user = relationship("UserProfile", back_populates="activities")

@@ -1,6 +1,6 @@
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, delete
@@ -10,6 +10,7 @@ from app.models.conversation import Conversation, Message
 from app.models.user import UserProfile, CareerProfile, Activity
 from app.schemas.chat import ConversationCreate
 from app.services.llm_service import llm_service
+from app.services.memory_service import memory_service
 from app.api.deps import get_session_id, get_db_session
 
 router = APIRouter()
@@ -40,7 +41,7 @@ async def get_or_create_user(session: AsyncSession, session_id: str) -> UserProf
 
 
 async def get_user_context(session: AsyncSession, user_id: uuid.UUID) -> dict:
-    """Build user context from profile for persistent AI memory."""
+    """Build comprehensive user context from profile AND persistent memory."""
     result = await session.execute(
         select(UserProfile).where(UserProfile.id == user_id)
     )
@@ -48,14 +49,12 @@ async def get_user_context(session: AsyncSession, user_id: uuid.UUID) -> dict:
     if not user:
         return {}
 
-    context = {
-        "target_role": user.target_role or "",
-        "current_role": user.current_role or "",
-        "years_experience": user.years_experience or 0,
-        "skills": user.skills or [],
-        "interests": user.interests or [],
-        "resume_text": (user.resume_text or "")[:2000],
-    }
+    # Get memory-enriched context
+    context = await memory_service.get_full_context(session, user)
+
+    # Also include resume text separately
+    context["resume_text"] = (user.resume_text or "")[:2000]
+
     return context
 
 
@@ -212,6 +211,11 @@ async def stream_chat(
     user = await get_or_create_user(db, session_id)
     user_context = await get_user_context(db, user.id)
 
+    # Extract memories from user message
+    await memory_service.extract_memories_from_text(
+        db, user.id, content, source="user_input"
+    )
+
     conv_result = await db.execute(
         select(Conversation).where(Conversation.id == conversation_id)
     )
@@ -263,7 +267,7 @@ async def stream_chat(
                 db.add(ai_message)
                 await db.commit()
 
-            conversation.updated_at = datetime.utcnow()
+            conversation.updated_at = datetime.now(timezone.utc)
             await db.commit()
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"

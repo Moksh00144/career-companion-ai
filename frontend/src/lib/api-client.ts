@@ -16,9 +16,6 @@ class ApiError extends Error {
   }
 }
 
-/**
- * Converts snake_case keys to camelCase recursively.
- */
 function toCamelCase(obj: unknown): unknown {
   if (Array.isArray(obj)) {
     return obj.map(toCamelCase)
@@ -90,7 +87,7 @@ export const api = {
   getMessages: (conversationId: string) =>
     request<import('@/types/chat').Message[]>(`/conversations/${conversationId}/messages`),
 
-  // Streaming - uses fetch with custom headers (EventSource can't send headers)
+  // Streaming
   streamChat: (
     conversationId: string,
     content: string,
@@ -155,6 +152,43 @@ export const api = {
 
     return controller
   },
+
+  // Memory
+  getMemories: (params?: { category?: string; minImportance?: number; limit?: number }) =>
+    request<{ memories: import('@/types/memory').MemoryEntry[]; total: number }>(
+      '/memory',
+      { params: params as unknown as Record<string, string> }
+    ),
+
+  createMemory: (data: { key: string; value: string; category?: string; importance?: number }) =>
+    request<import('@/types/memory').MemoryEntry>('/memory', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getMemory: (id: string) =>
+    request<import('@/types/memory').MemoryEntry>(`/memory/${id}`),
+
+  updateMemory: (id: string, data: { value?: string; category?: string; importance?: number }) =>
+    request<import('@/types/memory').MemoryEntry>(`/memory/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteMemory: (id: string) =>
+    request<void>(`/memory/${id}`, { method: 'DELETE' }),
+
+  clearMemories: () =>
+    request<{ status: string; count: number }>('/memory', { method: 'DELETE' }),
+
+  getMemoryCount: () =>
+    request<{ count: number }>('/memory/count'),
+
+  extractMemories: (text: string) =>
+    request<{ extracted: number; memories: import('@/types/memory').MemoryEntry[] }>(
+      `/memory/extract?text=${encodeURIComponent(text)}`,
+      { method: 'POST' }
+    ),
 
   // Documents
   uploadDocument: async (file: File) => {

@@ -1,9 +1,13 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.config.database import Base
 from app.models.types import GUID
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class Conversation(Base):
@@ -15,8 +19,8 @@ class Conversation(Base):
     mode = Column(String(50), default="general")
     metadata_ = Column("metadata", JSON, default=dict)
     is_archived = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     messages = relationship(
         "Message",
@@ -39,6 +43,6 @@ class Message(Base):
     role = Column(String(10), nullable=False)  # 'user', 'assistant', 'system'
     content = Column(Text, nullable=False)
     metadata_ = Column("metadata", JSON, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")

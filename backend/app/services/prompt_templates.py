@@ -1,7 +1,18 @@
 """
 Prompt Engineering Framework for CareerForge AI
 Uses structured system prompts with persona, context, task, format, and constraints.
+Includes persistent memory context injection.
 """
+
+
+def _inject_memory(base_prompt: str, context: dict | None = None) -> str:
+    """Append memory context to a system prompt if available."""
+    context = context or {}
+    memory_text = context.get("memory_text", "")
+    if memory_text:
+        return f"{base_prompt}\n\n{memory_text}"
+    return base_prompt
+
 
 SYSTEM_PROMPT_GENERAL = """You are CareerForge AI, an expert career development assistant. Your goal is to help users advance their careers through personalized advice, resume optimization, interview preparation, and skill development.
 
@@ -107,10 +118,10 @@ Tone: Strategic, data-driven, and personalized."""
 
 
 def get_system_prompt(mode: str, context: dict | None = None) -> str:
-    """Get the appropriate system prompt based on conversation mode."""
+    """Get the appropriate system prompt based on conversation mode, with memory injection."""
     context = context or {}
 
-    prompts = {
+    base_prompts = {
         "general": SYSTEM_PROMPT_GENERAL,
         "interview": SYSTEM_PROMPT_INTERVIEW.format(
             target_role=context.get("target_role", "Software Engineer"),
@@ -132,4 +143,6 @@ def get_system_prompt(mode: str, context: dict | None = None) -> str:
         ),
     }
 
-    return prompts.get(mode, SYSTEM_PROMPT_GENERAL)
+    base = base_prompts.get(mode, SYSTEM_PROMPT_GENERAL)
+    # Inject persistent memories
+    return _inject_memory(base, context)
