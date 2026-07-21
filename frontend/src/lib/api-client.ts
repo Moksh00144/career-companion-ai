@@ -60,6 +60,16 @@ async function request<T>(endpoint: string, options: FetchOptions = {}): Promise
   return toCamelCase(data) as T
 }
 
+interface DashboardData {
+  overall: number
+  resumeScore: number
+  interviewScore: number
+  skillGapScore: number
+  careerReadiness: number
+  lastUpdated: string | null
+  activities: import('@/types/user').Activity[]
+}
+
 export const api = {
   // Health
   health: () => request<{ status: string }>('/health'),
@@ -108,24 +118,19 @@ export const api = {
           onError(`HTTP ${response.status}`)
           return
         }
-
         const reader = response.body?.getReader()
         if (!reader) {
           onError('No response body')
           return
         }
-
         const decoder = new TextDecoder()
         let buffer = ''
-
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
-
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
@@ -137,9 +142,7 @@ export const api = {
                 } else if (data.type === 'error') {
                   onError(data.error || 'Stream error')
                 }
-              } catch {
-                // ignore parse errors
-              }
+              } catch { /* ignore */ }
             }
           }
         }
@@ -149,7 +152,6 @@ export const api = {
           onError(err.message || 'Connection error')
         }
       })
-
     return controller
   },
 
@@ -159,35 +161,17 @@ export const api = {
       '/memory',
       { params: params as unknown as Record<string, string> }
     ),
-
   createMemory: (data: { key: string; value: string; category?: string; importance?: number }) =>
-    request<import('@/types/memory').MemoryEntry>('/memory', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  getMemory: (id: string) =>
-    request<import('@/types/memory').MemoryEntry>(`/memory/${id}`),
-
+    request<import('@/types/memory').MemoryEntry>('/memory', { method: 'POST', body: JSON.stringify(data) }),
+  getMemory: (id: string) => request<import('@/types/memory').MemoryEntry>(`/memory/${id}`),
   updateMemory: (id: string, data: { value?: string; category?: string; importance?: number }) =>
-    request<import('@/types/memory').MemoryEntry>(`/memory/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-
-  deleteMemory: (id: string) =>
-    request<void>(`/memory/${id}`, { method: 'DELETE' }),
-
-  clearMemories: () =>
-    request<{ status: string; count: number }>('/memory', { method: 'DELETE' }),
-
-  getMemoryCount: () =>
-    request<{ count: number }>('/memory/count'),
-
+    request<import('@/types/memory').MemoryEntry>(`/memory/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteMemory: (id: string) => request<void>(`/memory/${id}`, { method: 'DELETE' }),
+  clearMemories: () => request<{ status: string; count: number }>('/memory', { method: 'DELETE' }),
+  getMemoryCount: () => request<{ count: number }>('/memory/count'),
   extractMemories: (text: string) =>
     request<{ extracted: number; memories: import('@/types/memory').MemoryEntry[] }>(
-      `/memory/extract?text=${encodeURIComponent(text)}`,
-      { method: 'POST' }
+      `/memory/extract?text=${encodeURIComponent(text)}`, { method: 'POST' }
     ),
 
   // Documents
@@ -203,27 +187,20 @@ export const api = {
     const data = await response.json()
     return toCamelCase(data) as { id: string; filename: string; createdAt: string }
   },
-
   getDocuments: () =>
-    request<{ documents: Array<{ id: string; filename: string; createdAt: string }> }>(
-      '/documents'
-    ),
+    request<{ documents: Array<{ id: string; filename: string; createdAt: string }> }>('/documents'),
 
   // Career
   getCareerHealth: () =>
     request<import('@/types/user').CareerHealth>('/career/health'),
-
   getActivities: () =>
     request<{ activities: import('@/types/user').Activity[] }>('/career/activities'),
-
   updateProfile: (data: Partial<import('@/types/user').UserProfile>) =>
-    request<import('@/types/user').UserProfile>('/career/profile', {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-
+    request<import('@/types/user').UserProfile>('/career/profile', { method: 'PUT', body: JSON.stringify(data) }),
   getProfile: () =>
     request<import('@/types/user').UserProfile>('/career/profile'),
+  getDashboard: () =>
+    request<DashboardData>('/career/dashboard'),
 }
 
 export { ApiError }

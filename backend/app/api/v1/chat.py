@@ -11,6 +11,7 @@ from app.models.user import UserProfile, CareerProfile, Activity
 from app.schemas.chat import ConversationCreate
 from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
+from app.services.scoring_service import scoring_service
 from app.api.deps import get_session_id, get_db_session
 
 router = APIRouter()
@@ -28,13 +29,15 @@ async def get_or_create_user(session: AsyncSession, session_id: str) -> UserProf
             session_id=session_id,
         )
         session.add(user)
-        await session.flush()
 
         career = CareerProfile(
             id=uuid.uuid4(),
             user_id=user.id,
         )
         session.add(career)
+
+        # Flush once so both new objects are visible to subsequent SELECTs
+        # in the same transaction (required by async SQLAlchemy sessions).
         await session.flush()
 
     return user
@@ -49,13 +52,33 @@ async def get_user_context(session: AsyncSession, user_id: uuid.UUID) -> dict:
     if not user:
         return {}
 
-    # Get memory-enriched context
     context = await memory_service.get_full_context(session, user)
-
-    # Also include resume text separately
     context["resume_text"] = (user.resume_text or "")[:2000]
-
     return context
+
+
+async def log_chat_activity(
+    session: AsyncSession,
+    user: UserProfile,
+    mode: str,
+    content: str,
+):
+    """Log chat activity for dashboard tracking."""
+    activity_map = {
+        "interview": ("interview_practice", "Mock Interview Session", f"Practiced interview with AI"),
+        "resume_analysis": ("resume_analyzed", "Resume Analysis", "Resume was analyzed by AI"),
+        "skill_gap": ("skill_gap_analysis", "Skill Gap Analysis", f"Analyzed skills for target role"),
+        "career_advice": ("career_strategy", "Career Strategy Session", "Received career guidance"),
+    }
+    act_type, title, desc = activity_map.get(
+        mode, ("general_chat", "Chat Session", "Had a conversation with AI")
+    )
+    await scoring_service.log_activity(
+        session, user, act_type, title,
+        description=f"{desc}: {content[:80]}..." if len(content) > 80 else desc,
+    )
+    # Recalculate scores after activity
+    await scoring_service.update_scores(session, user)
 
 
 def _serialize_conv(conv: Conversation, msg_count: int = 0, last_message: str | None = None) -> dict:
@@ -140,7 +163,7 @@ async def create_conversation(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Create a new conversation."""
-    await get_or_create_user(db, session_id)
+    user = await get_or_create_user(db, session_id)
 
     conversation = Conversation(
         id=uuid.uuid4(),
@@ -265,6 +288,10 @@ async def stream_chat(
                     content=full_response,
                 )
                 db.add(ai_message)
+
+                # Log activity and update scores
+                await log_chat_activity(db, user, mode or conversation.mode, content)
+
                 await db.commit()
 
             conversation.updated_at = datetime.now(timezone.utc)

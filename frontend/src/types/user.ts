@@ -28,9 +28,9 @@ export interface CareerHealth {
 
 export interface Activity {
   id: string
-  type: 'resume_analyzed' | 'interview_practice' | 'skill_gap' | 'career_advice'
+  type: string
   title: string
-  description: string
-  timestamp: string
-  score?: number
+  description: string | null
+  score: number | null
+  createdAt: string
 }
