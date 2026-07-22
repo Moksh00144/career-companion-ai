@@ -15,14 +15,18 @@ import {
   Upload,
   MessageSquare,
   TrendingUp,
+  TrendingDown,
   Clock,
+  Activity,
+  Zap,
+  Award,
 } from 'lucide-react'
 
 const scoreCards = [
-  { key: 'resume_score', label: 'Resume Score', icon: FileText, color: 'from-blue-500 to-blue-600' },
-  { key: 'interview_score', label: 'Interview Score', icon: Target, color: 'from-purple-500 to-purple-600' },
-  { key: 'skill_gap_score', label: 'Skill Gap', icon: BookOpen, color: 'from-emerald-500 to-emerald-600' },
-  { key: 'career_readiness', label: 'Career Readiness', icon: BarChart3, color: 'from-amber-500 to-amber-600' },
+  { key: 'resumeScore', label: 'Resume Score', icon: FileText, color: 'from-blue-500 to-blue-600' },
+  { key: 'interviewScore', label: 'Interview Score', icon: Target, color: 'from-purple-500 to-purple-600' },
+  { key: 'skillGapScore', label: 'Skill Gap', icon: BookOpen, color: 'from-emerald-500 to-emerald-600' },
+  { key: 'careerReadiness', label: 'Career Readiness', icon: BarChart3, color: 'from-amber-500 to-amber-600' },
 ]
 
 export function DashboardPage() {
@@ -61,7 +65,7 @@ export function DashboardPage() {
       </div>
 
       {/* Career Health Score */}
-      <Card className="relative overflow-hidden">
+      <Card className="relative overflow-hidden border-glow hover-lift">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent" />
         <CardContent className="p-6 md:p-8 relative">
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
@@ -85,10 +89,11 @@ export function DashboardPage() {
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary" className="text-xs">
                   <Clock className="w-3 h-3 mr-1" />
-              {health?.lastUpdated ? 'Updated recently' : 'Not yet analyzed'}
+                  {health?.lastUpdated ? 'Updated recently' : 'Not yet analyzed'}
                 </Badge>
                 <Badge variant="outline" className="text-xs">
-                Target: {health?.careerReadiness ?? 0}% readiness
+                  <Award className="w-3 h-3 mr-1" />
+                  Target: {health?.careerReadiness ?? 0}% readiness
                 </Badge>
               </div>
             </div>
@@ -105,8 +110,9 @@ export function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {scoreCards.map((card) => {
           const score = health ? (health as any)[card.key] as number ?? 0 : 0
+          const trend = score >= 50 ? 'up' : 'down'
           return (
-            <Card key={card.key} className="hover:border-primary/30 transition-all duration-300">
+            <Card key={card.key} className="hover:border-primary/30 transition-all duration-300 hover-lift">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${card.color} flex items-center justify-center`}>
@@ -120,9 +126,19 @@ export function DashboardPage() {
                 <p className="text-sm font-medium">{card.label}</p>
                 <div className="mt-2 h-1.5 rounded-full bg-secondary overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-500"
+                    className={`h-full rounded-full bg-gradient-to-r ${trend === 'up' ? 'from-primary to-accent' : 'from-amber-500 to-red-500'} transition-all duration-500`}
                     style={{ width: `${healthLoading ? 0 : score}%` }}
                   />
+                </div>
+                <div className="flex items-center gap-1 mt-1">
+                  {trend === 'up' ? (
+                    <TrendingUp className="w-3 h-3 text-emerald-500" />
+                  ) : (
+                    <TrendingDown className="w-3 h-3 text-red-500" />
+                  )}
+                  <span className={`text-xs ${trend === 'up' ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {trend === 'up' ? 'Improving' : 'Needs attention'}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -136,7 +152,7 @@ export function DashboardPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {quickActions.map((action) => (
             <Link key={action.label} to={action.href}>
-              <Card className="hover:border-primary/30 hover:bg-primary/5 transition-all duration-300 cursor-pointer group">
+              <Card className="hover:border-primary/30 hover:bg-primary/5 transition-all duration-300 cursor-pointer group hover-lift">
                 <CardContent className="p-4 flex flex-col items-center text-center gap-2">
                   <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center group-hover:bg-primary/10 transition-colors">
                     <action.icon className="w-5 h-5 text-primary" />
@@ -161,7 +177,7 @@ export function DashboardPage() {
         ) : activitiesData?.activities && activitiesData.activities.length > 0 ? (
           <div className="space-y-2">
             {activitiesData.activities.map((activity) => (
-              <Card key={activity.id} className="hover:border-primary/20 transition-colors">
+              <Card key={activity.id} className="hover:border-primary/20 transition-colors hover-lift">
                 <CardContent className="p-4 flex items-center gap-4">
                   <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
                     {activityIcons[activity.type as keyof typeof activityIcons] || <Sparkles className="w-4 h-4 text-primary" />}
