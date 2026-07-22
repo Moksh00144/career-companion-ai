@@ -12,11 +12,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./careerforge.db"
     DATABASE_URL_ASYNC: str = "sqlite+aiosqlite:///./careerforge.db"
 
-    # OpenAI
-    OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4o-mini"
-    OPENAI_MAX_TOKENS: int = 2048
-    OPENAI_TEMPERATURE: float = 0.7
+    # Gemini
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MAX_TOKENS: int = 2048
+    GEMINI_TEMPERATURE: float = 0.7
 
     # Auth
     SECRET_KEY: str = "dev-secret-key-change-in-production"
