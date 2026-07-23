@@ -10,9 +10,10 @@ import {
   BookOpen,
   BarChart3,
   CheckCircle2,
-  Quote,
-  Star,
-  Users,
+  Bot,
+  ShieldCheck,
+  Upload,
+  MessageSquare,
   TrendingUp,
 } from 'lucide-react'
 
@@ -87,14 +88,17 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Stats Bar */}
+      {/* CareerForge Features */}
       <section className="py-12 border-t border-b bg-secondary/30" data-animate>
         <div className="container">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {stats.map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-3xl font-bold text-gradient mb-1">{stat.value}</div>
-                <div className="text-sm text-muted-foreground">{stat.label}</div>
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold tracking-tight">CareerForge Features</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {careerforgeFeatures.map((feature) => (
+              <div key={feature.label} className="flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
+                <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0" aria-hidden="true" />
+                <span>{feature.label}</span>
               </div>
             ))}
           </div>
@@ -112,8 +116,9 @@ export function LandingPage() {
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((feature) => (
-              <div
+              <Link
                 key={feature.title}
+                to={feature.path}
                 className="glass-card rounded-xl p-6 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 group"
               >
                 <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
@@ -121,30 +126,31 @@ export function LandingPage() {
                 </div>
                 <h3 className="font-semibold mb-2">{feature.title}</h3>
                 <p className="text-sm text-muted-foreground">{feature.description}</p>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
+      {/* How CareerForge Works */}
       <section className="py-20 border-t bg-secondary/20" data-animate>
         <div className="container">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold tracking-tight mb-3">How It Works</h2>
+            <h2 className="text-3xl font-bold tracking-tight mb-3">How CareerForge Works</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Three simple steps to transform your career trajectory.
+              Four simple steps to improve your career with AI.
             </p>
           </div>
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
             {steps.map((step, i) => (
-              <div key={step.title} className="text-center relative">
+              <div key={step.title} className="glass-card rounded-xl p-6 text-center relative">
                 {i < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-8 left-[60%] w-[80%] h-px bg-gradient-to-r from-primary/40 to-transparent" />
+                  <div className="hidden lg:block absolute top-12 left-[60%] w-[80%] h-px bg-gradient-to-r from-primary/40 to-transparent" />
                 )}
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center mx-auto mb-4 text-2xl font-bold text-white relative z-10">
-                  {i + 1}
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center mx-auto mb-4 text-white relative z-10">
+                  {step.icon}
                 </div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">Step {i + 1}</p>
                 <h3 className="font-semibold mb-2">{step.title}</h3>
                 <p className="text-sm text-muted-foreground">{step.description}</p>
               </div>
@@ -153,36 +159,23 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Testimonials */}
+      {/* Why CareerForge */}
       <section className="py-20" data-animate>
         <div className="container">
           <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 mb-4">
-              <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-              <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-              <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-              <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-              <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-            </div>
-            <h2 className="text-3xl font-bold tracking-tight mb-3">Loved by Professionals</h2>
+            <h2 className="text-3xl font-bold tracking-tight mb-3">Why CareerForge?</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Join thousands of professionals who have accelerated their careers.
+              Practical AI tools for every stage of your career development.
             </p>
           </div>
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {testimonials.map((t) => (
-              <div key={t.name} className="glass-card rounded-xl p-6 hover:border-primary/30 transition-all">
-                <Quote className="w-8 h-8 text-primary/30 mb-3" />
-                <p className="text-sm text-muted-foreground mb-4 leading-relaxed">{t.text}</p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-sm font-bold text-white">
-                    {t.initials}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{t.name}</p>
-                    <p className="text-xs text-muted-foreground">{t.role}</p>
-                  </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+            {whyCareerforge.map((item) => (
+              <div key={item.title} className="glass-card rounded-xl p-6 hover:border-primary/30 transition-all">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mb-4">
+                  {item.icon}
                 </div>
+                <h3 className="font-semibold mb-2">{item.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
               </div>
             ))}
           </div>
@@ -198,11 +191,11 @@ export function LandingPage() {
               Ready to Transform Your Career?
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              Start your AI-powered career journey today. No credit card required.
+              Start your AI-powered career journey today.
             </p>
             <Link to="/dashboard">
               <Button variant="gradient" size="xl" className="group">
-                Get Started Free <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+                Get Started <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Button>
             </Link>
           </div>
@@ -260,11 +253,12 @@ export function LandingPage() {
   )
 }
 
-const stats = [
-  { value: '10K+', label: 'Active Users' },
-  { value: '50K+', label: 'Interviews Practiced' },
-  { value: '95%', label: 'Satisfaction Rate' },
-  { value: '4.9', label: 'Average Rating' },
+const careerforgeFeatures = [
+  { label: 'AI Resume Analysis' },
+  { label: 'AI Mock Interview' },
+  { label: 'Skill Gap Analysis' },
+  { label: 'Career Dashboard' },
+  { label: 'Personalized Career Advice' },
 ]
 
 const features = [
@@ -272,56 +266,70 @@ const features = [
     title: 'Mock Interviews',
     description: 'Practice with AI-powered interview simulations tailored to your target role and industry.',
     icon: <Target className="w-5 h-5 text-primary" />,
+    path: '/chat?mode=interview',
   },
   {
     title: 'Resume Analysis',
     description: 'Get ATS-optimized scores, keyword suggestions, and actionable improvements for your resume.',
     icon: <FileText className="w-5 h-5 text-accent" />,
+    path: '/chat?mode=resume',
   },
   {
     title: 'Skill Gap Analysis',
     description: 'Identify missing skills, compare with market demands, and get a personalized learning roadmap.',
     icon: <BookOpen className="w-5 h-5 text-primary" />,
+    path: '/chat?mode=skills',
   },
   {
     title: 'Career Health',
     description: 'Track your career readiness with comprehensive scoring, insights, and personalized recommendations.',
     icon: <BarChart3 className="w-5 h-5 text-accent" />,
+    path: '/dashboard',
   },
 ]
 
 const steps = [
   {
-    title: 'Create Your Profile',
-    description: 'Share your experience, skills, and career goals to get personalized AI guidance.',
+    title: 'Upload Your Resume',
+    description: 'Upload or paste your resume for AI-powered analysis.',
+    icon: <Upload className="w-7 h-7" />,
   },
   {
-    title: 'Practice & Analyze',
-    description: 'Engage in mock interviews, analyze your resume, and identify skill gaps with AI feedback.',
+    title: 'AI Resume Analysis',
+    description: 'CareerForge analyzes resume quality, ATS compatibility, strengths, weaknesses, and improvement areas.',
+    icon: <FileText className="w-7 h-7" />,
   },
   {
-    title: 'Track Progress',
-    description: 'Monitor your career health scores, review activity history, and see your improvement over time.',
+    title: 'Practice Mock Interviews',
+    description: 'Chat with the AI interviewer, answer technical and HR questions, and receive personalized feedback.',
+    icon: <MessageSquare className="w-7 h-7" />,
+  },
+  {
+    title: 'Track Your Progress',
+    description: 'Your dashboard automatically updates your Resume Score, Interview Score, Skill Gap, Career Readiness, and Career Health as you continue using the platform.',
+    icon: <TrendingUp className="w-7 h-7" />,
   },
 ]
 
-const testimonials = [
+const whyCareerforge = [
   {
-    text: 'CareerForge AI helped me land my dream job. The mock interview practice was incredibly realistic and the feedback was spot-on.',
-    name: 'Sarah Chen',
-    role: 'Software Engineer at Google',
-    initials: 'SC',
+    title: 'AI Powered',
+    description: 'Uses Gemini 2.0 Flash to analyze resumes, evaluate interviews, identify skill gaps, and provide personalized career guidance.',
+    icon: <Bot className="w-5 h-5 text-primary" />,
   },
   {
-    text: 'The resume analysis feature identified gaps I never noticed. After implementing the suggestions, my interview callbacks doubled.',
-    name: 'Marcus Johnson',
-    role: 'Product Manager at Meta',
-    initials: 'MJ',
+    title: 'Personalized Career Guidance',
+    description: "Recommendations are based on your resume, interview performance, skill gaps, and career goals.",
+    icon: <Target className="w-5 h-5 text-accent" />,
   },
   {
-    text: 'The skill gap analysis gave me a clear roadmap for upskilling. I landed a promotion within 3 months of using CareerForge.',
-    name: 'Priya Patel',
-    role: 'Data Scientist at Amazon',
-    initials: 'PP',
+    title: 'Progress Tracking',
+    description: 'Monitor Resume Score, Interview Score, Skill Gap Score, Career Readiness, and Career Health from one dashboard.',
+    icon: <TrendingUp className="w-5 h-5 text-primary" />,
+  },
+  {
+    title: 'Privacy First',
+    description: 'All career information stays inside your session and is never shared.',
+    icon: <ShieldCheck className="w-5 h-5 text-accent" />,
   },
 ]

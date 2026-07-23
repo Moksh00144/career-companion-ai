@@ -28,6 +28,12 @@ export function SettingsPage() {
     queryFn: () => api.getProfile(),
   })
 
+  const { data: preferenceData } = useQuery({
+    queryKey: ['ai-preference'],
+    queryFn: () => api.getMemories({ category: 'preference', limit: 200 }),
+  })
+  const savedPreference = preferenceData?.memories.find((memory) => memory.key === 'ai_preferences')
+
   const [formData, setFormData] = useState({
     fullName: '',
     currentRole: '',
@@ -35,6 +41,7 @@ export function SettingsPage() {
     yearsExperience: 0,
     skills: '',
     interests: '',
+    aiPreference: '',
   })
 
   // Initialize form when profile loads
@@ -47,16 +54,35 @@ export function SettingsPage() {
         yearsExperience: profile.yearsExperience || 0,
         skills: (profile.skills || []).join(', '),
         interests: (profile.interests || []).join(', '),
+        aiPreference: savedPreference?.value || '',
       })
     }
-  }, [profile])
+  }, [profile, savedPreference])
 
   const updateMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) => api.updateProfile(data),
+    mutationFn: async (data: Record<string, unknown>) => {
+      const { aiPreference, ...profileData } = data
+      const updatedProfile = await api.updateProfile(profileData)
+      const preference = typeof aiPreference === 'string' ? aiPreference.trim() : ''
+
+      if (preference) {
+        await api.createMemory({
+          key: 'ai_preferences',
+          value: preference,
+          category: 'preference',
+          importance: 5,
+        })
+      } else if (savedPreference) {
+        await api.deleteMemory(savedPreference.id)
+      }
+
+      return updatedProfile
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] })
       queryClient.invalidateQueries({ queryKey: ['career-health'] })
       queryClient.invalidateQueries({ queryKey: ['activities'] })
+      queryClient.invalidateQueries({ queryKey: ['ai-preference'] })
       toast({
         title: 'Profile updated',
         description: 'Your career profile has been saved successfully.',
@@ -100,6 +126,7 @@ export function SettingsPage() {
       years_experience: formData.yearsExperience || undefined,
       skills: formData.skills.split(',').map((s) => s.trim()).filter(Boolean),
       interests: formData.interests.split(',').map((s) => s.trim()).filter(Boolean),
+      aiPreference: formData.aiPreference,
     })
   }
 
@@ -223,7 +250,7 @@ export function SettingsPage() {
             <Bot className="w-5 h-5 text-primary" />
             <CardTitle>AI Preferences</CardTitle>
           </div>
-          <CardDescription>Configure how the AI assistant responds</CardDescription>
+          <CardDescription>Customize how CareerForge AI responds to you. These preferences are applied to every new conversation using our Gemini-powered AI assistant.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
@@ -231,10 +258,20 @@ export function SettingsPage() {
               <Sparkles className="w-5 h-5 text-primary" />
               <div>
                 <p className="text-sm font-medium">AI Model</p>
-                <p className="text-xs text-muted-foreground">Gemini 2.0 Flash (fast & cost-effective)</p>
+                <p className="text-xs text-muted-foreground">Gemini 2.0 Flash</p>
               </div>
             </div>
             <Badge variant="secondary">Active</Badge>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Response preference</label>
+            <textarea
+              value={formData.aiPreference}
+              onChange={(e) => setFormData({ ...formData, aiPreference: e.target.value })}
+              placeholder={'Example:\nKeep answers concise.\nExplain concepts step by step.\nUse simple English.\nFocus on AI/ML career advice.'}
+              className="flex min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+            <p className="text-xs text-muted-foreground">Your preferences are appended to the AI system prompt and automatically applied to all future chats until changed.</p>
           </div>
         </CardContent>
       </Card>

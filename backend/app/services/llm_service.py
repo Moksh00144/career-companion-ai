@@ -1,13 +1,11 @@
 """LLM Service using Google Gemini via the google-genai SDK.
 
-Replaces the previous OpenAI client. Keeps the exact same interface
-(stream_response / generate_text) so no API routes or business logic change.
+Keeps the original streaming interface for API routes and business logic.
 """
 from typing import AsyncGenerator
 from google import genai
 from app.config.settings import settings
 from app.services.prompt_templates import get_system_prompt
-
 
 class LLMService:
     def __init__(self):

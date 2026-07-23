@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
+import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useUIStore } from '@/stores/ui-store'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -23,7 +23,6 @@ const navItems = [
 
 export function DashboardLayout() {
   const location = useLocation()
-  const navigate = useNavigate()
   const { sidebarOpen, toggleSidebar, theme, toggleTheme, mobileMenuOpen, setMobileMenuOpen } = useUIStore()
 
   return (
@@ -48,7 +47,12 @@ export function DashboardLayout() {
       >
         {/* Logo */}
         <div className={cn('flex items-center h-16 border-b border-sidebar-border px-4', !sidebarOpen && 'justify-center')}>
-          <Link to="/dashboard" className="flex items-center gap-2 min-w-0" aria-label="Dashboard home">
+          <Link
+            to="/dashboard"
+            onClick={() => setMobileMenuOpen(false)}
+            className="flex items-center gap-2 min-w-0"
+            aria-label="Dashboard home"
+          >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
@@ -122,12 +126,12 @@ export function DashboardLayout() {
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
-          <div className="flex items-center gap-2">
+          <Link to="/dashboard" className="flex items-center gap-2" aria-label="Dashboard home">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Sparkles className="w-3.5 h-3.5 text-white" />
             </div>
             <span className="font-bold">CareerForge</span>
-          </div>
+          </Link>
           <button
             onClick={toggleTheme}
             className="p-2 hover:bg-secondary rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center"

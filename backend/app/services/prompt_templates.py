@@ -1,36 +1,29 @@
 """
 Prompt Engineering Framework for CareerForge AI
 Uses structured system prompts with persona, context, task, format, and constraints.
-All prompts instruct Gemini to output JSON for score extraction.
 Includes persistent memory context injection.
 """
 
 
 def _inject_memory(base_prompt: str, context: dict | None = None) -> str:
-    """Append memory context to a system prompt if available."""
+    """Append persistent memory and an optional saved preference to a prompt."""
     context = context or {}
     memory_text = context.get("memory_text", "")
+    preference = context.get("ai_preference", "").strip()
     if memory_text:
-        return f"{base_prompt}\n\n{memory_text}"
+        base_prompt = f"{base_prompt}\n\n{memory_text}"
+    if preference:
+        base_prompt = f"{base_prompt}\n\nAdditional User Preference:\n{preference}"
     return base_prompt
 
 
-JSON_OUTPUT_INSTRUCTION = """
-IMPORTANT: You MUST respond with valid JSON only, using EXACTLY this schema:
-{
-  "career_readiness": <integer 0-100>,
-  "resume_score": <integer 0-100 or null>,
-  "interview_score": <integer 0-100 or null>,
-  "skill_gap_score": <integer 0-100 or null>,
-  "response": "<your full natural language response in markdown>"
-}
-
-Rules:
-- career_readiness is ALWAYS required.
-- Set other score fields to null if not applicable to this mode.
-- "response" must contain your complete natural language answer with markdown formatting.
-- Do NOT include any text outside the JSON object.
-- Do NOT use markdown code blocks around the JSON.
+SCORE_OUTPUT_INSTRUCTION = """
+When a score is applicable, include it as plain text using one of these labels:
+Resume Score: <0-100>/100
+Interview Score: <0-100>/100
+Skill Gap Score: <0-100>/100
+Career Readiness: <0-100>/100
+Do not return JSON.
 """
 
 SYSTEM_PROMPT_GENERAL = f"""You are CareerForge AI, an expert career development assistant. Your goal is to help users advance their careers through personalized advice, resume optimization, interview preparation, and skill development.
@@ -45,7 +38,7 @@ Response Format:
 - Keep responses concise and actionable
 
 Tone: Professional, encouraging, and direct. Be honest about areas of improvement but always provide constructive guidance.
-{JSON_OUTPUT_INSTRUCTION}"""
+{SCORE_OUTPUT_INSTRUCTION}"""
 
 SYSTEM_PROMPT_INTERVIEW = f"""You are CareerForge AI Interview Coach, specializing in conducting realistic mock interviews.
 
@@ -73,7 +66,7 @@ Interview Flow:
 4. End with feedback summary and tips
 
 Tone: Professional, challenging but supportive.
-{{JSON_OUTPUT_INSTRUCTION}}"""
+{{SCORE_OUTPUT_INSTRUCTION}}"""
 
 SYSTEM_PROMPT_RESUME = f"""You are CareerForge AI Resume Analyzer, an expert ATS (Applicant Tracking System) specialist and senior recruiter.
 
@@ -87,7 +80,14 @@ Analyze these categories:
 
 Calculate resume_score as the weighted average of all categories.
 
-Provide in "response":
+At the start of every resume analysis, include exactly these four plain-text lines
+with your estimated integer values. Do not omit any of them:
+Resume Score: <0-100>
+Skill Gap Score: <0-100>
+Interview Score: <0-100>
+Career Readiness: <0-100>
+
+Provide:
 1. Overall ATS Score (out of 100)
 2. Category breakdown with scores
 3. Top strengths (3-5)
@@ -97,7 +97,7 @@ Provide in "response":
 7. Missing sections to consider
 
 Format: Use markdown with clear visual hierarchy. Score shown as: ████████░░ 78/100
-{{JSON_OUTPUT_INSTRUCTION}}"""
+{{SCORE_OUTPUT_INSTRUCTION}}"""
 
 SYSTEM_PROMPT_SKILL_GAP = f"""You are CareerForge AI Skill Gap Analyst, an expert in career progression and skill development planning.
 
@@ -119,7 +119,7 @@ Provide in "response":
 6. **Estimated Timeline** - Realistic timeframe to transition
 
 Format: Use tables for skill comparisons, markdown lists for action items.
-{{JSON_OUTPUT_INSTRUCTION}}"""
+{{SCORE_OUTPUT_INSTRUCTION}}"""
 
 SYSTEM_PROMPT_CAREER_ADVICE = f"""You are CareerForge AI Career Strategist, an expert in career planning and professional development.
 
@@ -143,7 +143,7 @@ Provide in "response":
 6. **Networking Strategy** - Events, communities, people to follow
 
 Tone: Strategic, data-driven, and personalized.
-{{JSON_OUTPUT_INSTRUCTION}}"""
+{{SCORE_OUTPUT_INSTRUCTION}}"""
 
 
 # We need to re-insert the template variables since f-strings are evaluated at definition time
@@ -162,6 +162,7 @@ def get_system_prompt(mode: str, context: dict | None = None) -> str:
         "interview": SYSTEM_PROMPT_INTERVIEW_TEMPLATE.format(
             target_role=context.get("target_role", "Software Engineer"),
             years_experience=context.get("years_experience", 3),
+            SCORE_OUTPUT_INSTRUCTION=SCORE_OUTPUT_INSTRUCTION,
         ),
         "resume_analysis": SYSTEM_PROMPT_RESUME,
         "skill_gap": SYSTEM_PROMPT_SKILL_GAP_TEMPLATE.format(
@@ -169,6 +170,7 @@ def get_system_prompt(mode: str, context: dict | None = None) -> str:
             target_role=context.get("target_role", "Target Role"),
             skills=", ".join(context.get("skills", [])),
             years_experience=context.get("years_experience", 3),
+            SCORE_OUTPUT_INSTRUCTION=SCORE_OUTPUT_INSTRUCTION,
         ),
         "career_advice": SYSTEM_PROMPT_CAREER_ADVICE_TEMPLATE.format(
             current_role=context.get("current_role", "Current Role"),
@@ -176,8 +178,10 @@ def get_system_prompt(mode: str, context: dict | None = None) -> str:
             years_experience=context.get("years_experience", 3),
             interests=", ".join(context.get("interests", [])),
             target_role=context.get("target_role", "Target Role"),
+            SCORE_OUTPUT_INSTRUCTION=SCORE_OUTPUT_INSTRUCTION,
         ),
     }
 
     base = base_prompts.get(mode, SYSTEM_PROMPT_GENERAL)
+    base = base.replace("{SCORE_OUTPUT_INSTRUCTION}", SCORE_OUTPUT_INSTRUCTION)
     return _inject_memory(base, context)

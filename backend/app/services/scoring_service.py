@@ -50,38 +50,22 @@ class ScoringService:
         return min(score, 100)
 
     def extract_scores_from_text(self, text: str) -> dict[str, int]:
-        """Extract structured scores from AI response text.
-
-        Looks for patterns like:
-        - "Resume Score: 75/100"
-        - "Interview Score: 80"
-        - "Skill Gap Score: 60"
-        - "Career Readiness: 85"
-        - "Overall: 70"
-
-        Returns a dict with only the scores that were found and valid (0-100).
-        """
+        """Extract and clamp only the score labels present in streamed AI text."""
         scores: dict[str, int] = {}
         patterns = {
             "resume_score": r"(?:resume\s*score|resume\s*rating|ats\s*score)[:\s]*(\d{1,3})",
             "interview_score": r"(?:interview\s*score|interview\s*rating|mock\s*score)[:\s]*(\d{1,3})",
             "skill_gap_score": r"(?:skill\s*gap\s*score|skill\s*gap\s*rating|gap\s*score)[:\s]*(\d{1,3})",
             "career_readiness": r"(?:career\s*readiness|readiness\s*score|career\s*health)[:\s]*(\d{1,3})",
-            "overall": r"(?:overall\s*score|overall\s*health|total\s*score)[:\s]*(\d{1,3})",
         }
-
-        for key, pattern in patterns.items():
+        for field, pattern in patterns.items():
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                try:
-                    value = int(match.group(1))
-                    if 0 <= value <= 100:
-                        scores[key] = value
-                except (ValueError, IndexError):
-                    pass
-
+                scores[field] = max(0, min(100, int(match.group(1))))
         if scores:
-            logger.info(f"Extracted scores from AI response: {scores}")
+            logger.info("Extracted scores from streamed response: %s", scores)
+        else:
+            logger.warning("No score labels found in streamed response; CareerProfile will not be changed")
         return scores
 
     async def update_scores(
@@ -117,7 +101,7 @@ class ScoringService:
             "overall_health": career.overall_health,
         }
 
-        if ai_scores:
+        if ai_scores is not None:
             # AI scores: only update keys that were found, clamp 0-100
             if "resume_score" in ai_scores:
                 career.resume_score = max(0, min(100, ai_scores["resume_score"]))
@@ -127,9 +111,6 @@ class ScoringService:
                 career.skill_gap_score = max(0, min(100, ai_scores["skill_gap_score"]))
             if "career_readiness" in ai_scores:
                 career.career_readiness = max(0, min(100, ai_scores["career_readiness"]))
-                career.overall_health = career.career_readiness
-            elif "overall" in ai_scores:
-                career.career_readiness = max(0, min(100, ai_scores["overall"]))
                 career.overall_health = career.career_readiness
         else:
             # Heuristic: calculate from profile + activity counts

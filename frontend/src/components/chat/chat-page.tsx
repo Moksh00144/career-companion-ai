@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useChat } from '@/hooks/use-chat'
 import { ChatSidebar } from '@/components/chat/chat-sidebar'
 import { ChatMessage } from '@/components/chat/chat-message'
 import { ChatInput } from '@/components/chat/chat-input'
 import { EmptyState } from '@/components/chat/empty-state'
+import { ResumeAnalysisForm } from '@/components/chat/resume-analysis-form'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -36,23 +37,70 @@ const modePlaceholders: Record<ConversationMode, string> = {
   career_advice: 'Ask for career guidance...',
 }
 
+const modeAliases: Record<string, ConversationMode> = {
+  resume: 'resume_analysis',
+  skills: 'skill_gap',
+}
+
+function resolveMode(mode: string | null): ConversationMode {
+  if (mode && mode in modeConfig) {
+    return mode as ConversationMode
+  }
+
+  return modeAliases[mode ?? ''] ?? 'general'
+}
+
 export function ChatPage() {
   const { conversationId } = useParams()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const modeParam = (searchParams.get('mode') as ConversationMode) || 'general'
-  const [mode, setMode] = useState<ConversationMode>(modeParam)
+  const modeParam = searchParams.get('mode')
+  const mode = resolveMode(modeParam)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-  const { messages, isStreaming, sendMessage, loadConversation, cancelStream } = useChat()
+  const {
+    messages,
+    isStreaming,
+    currentConversation,
+    sendMessage,
+    loadConversation,
+    loadConversations,
+    cancelStream,
+    newConversation,
+  } = useChat()
+  const visibleMessages = currentConversation?.mode === mode ? messages : []
+  const showResumeAnalysisForm = mode === 'resume_analysis' && visibleMessages.length === 0 && !isStreaming
+
+  useEffect(() => {
+    let isCurrentMode = true
+    cancelStream()
+    newConversation()
+
+    void loadConversations(mode).then((conversations) => {
+      if (!isCurrentMode || conversationId || conversations.length === 0) return
+      void loadConversation(conversations[0].id, mode)
+    })
+
+    return () => {
+      isCurrentMode = false
+    }
+  }, [cancelStream, conversationId, loadConversation, loadConversations, mode, newConversation])
 
   // Load conversation if ID is provided
   useEffect(() => {
-    if (conversationId) {
-      loadConversation(conversationId)
+    if (!conversationId) return
+
+    if (!modeParam) {
+      void loadConversation(conversationId).then((conversation) => {
+        if (conversation) navigate(`/chat/${conversation.id}?mode=${conversation.mode}`, { replace: true })
+      })
+      return
     }
-  }, [conversationId, loadConversation])
+
+    void loadConversation(conversationId, mode)
+  }, [conversationId, loadConversation, mode, modeParam, navigate])
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -73,10 +121,14 @@ export function ChatPage() {
     sendMessage(text, mode)
   }
 
+  const handleModeChange = (nextMode: ConversationMode) => {
+    if (nextMode !== mode) navigate(`/chat?mode=${nextMode}`)
+  }
+
   return (
     <div className="flex h-[calc(100vh-8rem)] md:h-[calc(100vh-6rem)] relative">
       {/* Chat sidebar */}
-      <ChatSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <ChatSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} mode={mode} />
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -111,7 +163,7 @@ export function ChatPage() {
             {(Object.entries(modeConfig) as [ConversationMode, typeof modeConfig['general']][]).map(([key, config]) => (
               <button
                 key={key}
-                onClick={() => setMode(key)}
+                onClick={() => handleModeChange(key)}
                 className={cn(
                   'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap',
                   mode === key
@@ -134,15 +186,17 @@ export function ChatPage() {
           ref={messagesContainerRef}
           className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1 scrollbar-thin"
         >
-          {messages.length === 0 && !isStreaming ? (
+          {showResumeAnalysisForm ? (
+            <ResumeAnalysisForm isAnalyzing={isStreaming} onAnalyze={handleSend} />
+          ) : visibleMessages.length === 0 && !isStreaming ? (
             <EmptyState mode={mode} onSuggestionClick={handleSuggestionClick} />
           ) : (
             <div className="max-w-3xl mx-auto space-y-4 py-4">
-              {messages.map((msg) => (
+              {visibleMessages.map((msg) => (
                 <ChatMessage
                   key={msg.id}
                   message={msg}
-                  isStreaming={isStreaming && msg === messages[messages.length - 1] && msg.role === 'assistant'}
+                  isStreaming={isStreaming && msg === visibleMessages[visibleMessages.length - 1] && msg.role === 'assistant'}
                 />
               ))}
               <div ref={messagesEndRef} />
@@ -151,15 +205,17 @@ export function ChatPage() {
         </div>
 
         {/* Input area */}
-        <div className="max-w-3xl mx-auto w-full">
-          <ChatInput
-            onSend={handleSend}
-            onCancel={cancelStream}
-            isStreaming={isStreaming}
-            placeholder={modePlaceholders[mode]}
-            mode={mode}
-          />
-        </div>
+        {!showResumeAnalysisForm && (
+          <div className="max-w-3xl mx-auto w-full">
+            <ChatInput
+              onSend={handleSend}
+              onCancel={cancelStream}
+              isStreaming={isStreaming}
+              placeholder={modePlaceholders[mode]}
+              mode={mode}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

@@ -169,6 +169,7 @@ class MemoryService:
     ) -> str:
         """Format memories as a context string for the LLM system prompt."""
         memories = await self.get_memories(session, user_id, min_importance=1)
+        memories = [memory for memory in memories if memory.key != "ai_preferences"]
 
         if not memories:
             return ""
@@ -238,6 +239,7 @@ class MemoryService:
     ) -> dict:
         """Build comprehensive user context combining profile and memories."""
         memory_text = await self.format_memory_context(session, user.id)
+        preference = await self.get_memory_by_key(session, user.id, "ai_preferences")
 
         profile_context = {
             "target_role": user.target_role or "",
@@ -250,6 +252,7 @@ class MemoryService:
         return {
             **profile_context,
             "memory_text": memory_text,
+            "ai_preference": preference.value.strip() if preference else "",
             "memory_count": await self.get_memory_count(session, user.id),
         }
 

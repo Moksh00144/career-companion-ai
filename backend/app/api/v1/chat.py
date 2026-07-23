@@ -1,5 +1,6 @@
 import uuid
 import json
+import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -15,6 +16,7 @@ from app.services.scoring_service import scoring_service
 from app.api.deps import get_session_id, get_db_session
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def get_or_create_user(session: AsyncSession, session_id: str) -> UserProfile:
@@ -79,9 +81,12 @@ async def log_chat_activity(
         description=f"{desc}: {content[:80]}..." if len(content) > 80 else desc,
     )
 
-    # Extract AI scores from the response and update career profile
-    ai_scores = scoring_service.extract_scores_from_text(ai_response)
-    await scoring_service.update_scores(session, user, ai_scores=ai_scores)
+    try:
+        scores = scoring_service.extract_scores_from_text(ai_response)
+    except Exception:
+        logger.warning("Score extraction failed; CareerProfile will not be changed", exc_info=True)
+        scores = {}
+    await scoring_service.update_scores(session, user, ai_scores=scores)
 
 
 def _serialize_conv(conv: Conversation, msg_count: int = 0, last_message: str | None = None) -> dict:
@@ -292,8 +297,9 @@ async def stream_chat(
                 )
                 db.add(ai_message)
 
-                # Log activity and update scores (pass AI response for score extraction)
-                await log_chat_activity(db, user, mode or conversation.mode, content, ai_response=full_response)
+                await log_chat_activity(
+                    db, user, mode or conversation.mode, content, ai_response=full_response
+                )
 
                 await db.commit()
 

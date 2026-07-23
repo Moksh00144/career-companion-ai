@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { cn, formatRelativeTime, truncate } from '@/lib/utils'
@@ -27,25 +27,25 @@ const modeIcons: Record<string, typeof Sparkles> = {
 interface ChatSidebarProps {
   open: boolean
   onClose: () => void
+  mode: ConversationMode
 }
 
-export function ChatSidebar({ open, onClose }: ChatSidebarProps) {
-  const { conversationId } = useParams()
+export function ChatSidebar({ open, onClose, mode }: ChatSidebarProps) {
   const navigate = useNavigate()
-  const { conversations, loadConversations, deleteConversation, newConversation } = useChat()
+  const { conversations, currentConversation, loadConversations, deleteConversation, newConversation } = useChat()
 
   useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
+    void loadConversations(mode)
+  }, [loadConversations, mode])
 
   const handleNewChat = () => {
     newConversation()
-    navigate('/chat')
+    navigate(`/chat?mode=${mode}`)
     onClose()
   }
 
   const handleSelectConversation = (id: string) => {
-    navigate(`/chat/${id}`)
+    navigate(`/chat/${id}?mode=${mode}`)
     onClose()
   }
 
@@ -115,7 +115,7 @@ export function ChatSidebar({ open, onClose }: ChatSidebarProps) {
           ) : (
             conversations.map((conv) => {
               const Icon = modeIcons[conv.mode] || MessageSquare
-              const isActive = conv.id === conversationId
+              const isActive = conv.id === currentConversation?.id
               const timeAgo = conv.updatedAt ? formatRelativeTime(conv.updatedAt) : ''
               return (
                 <button

@@ -1,10 +1,12 @@
 import { useCallback, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/stores/chat-store'
 import { api } from '@/lib/api-client'
 import { generateId } from '@/lib/utils'
 import type { Message, ConversationMode } from '@/types/chat'
 
 export function useChat() {
+  const queryClient = useQueryClient()
   const {
     messages,
     isStreaming,
@@ -87,6 +89,8 @@ export function useChat() {
         },
         // onDone
         () => {
+          void queryClient.invalidateQueries({ queryKey: ['career-health'] })
+          void queryClient.invalidateQueries({ queryKey: ['activities'] })
           setIsStreaming(false)
           clearStreamContent()
           abortRef.current = null
@@ -107,28 +111,42 @@ export function useChat() {
       setIsStreaming,
       setCurrentConversation,
       clearStreamContent,
+      queryClient,
     ]
   )
 
-  const loadConversation = useCallback(async (id: string) => {
+  const loadConversation = useCallback(async (id: string, expectedMode?: ConversationMode) => {
     try {
       const [conversation, loadedMessages] = await Promise.all([
         api.getConversation(id),
         api.getMessages(id),
       ])
+      if (expectedMode && conversation.mode !== expectedMode) {
+        setCurrentConversation(null)
+        setMessages([])
+        return null
+      }
       setCurrentConversation(conversation)
       setMessages(loadedMessages)
+      return conversation
     } catch {
-      // handle error
+      setCurrentConversation(null)
+      setMessages([])
+      return null
     }
   }, [setCurrentConversation, setMessages])
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (mode?: ConversationMode) => {
     try {
       const result = await api.getConversations({ limit: '50', offset: '0' })
-      setConversations(result.conversations)
+      const conversations = mode
+        ? result.conversations.filter((conversation) => conversation.mode === mode)
+        : result.conversations
+      setConversations(conversations)
+      return conversations
     } catch {
-      // handle error
+      setConversations([])
+      return []
     }
   }, [setConversations])
 
