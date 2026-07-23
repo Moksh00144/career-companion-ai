@@ -201,6 +201,8 @@ export const api = {
     request<import('@/types/user').UserProfile>('/career/profile'),
   getDashboard: () =>
     request<DashboardData>('/career/dashboard'),
+  clearData: () =>
+    request<{ status: string; count: number }>('/career/clear', { method: 'POST' }),
 }
 
 export { ApiError }

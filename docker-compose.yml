@@ -10,9 +10,10 @@ services:
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./careerforge.db
       - DATABASE_URL_ASYNC=sqlite+aiosqlite:///./careerforge.db
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
       - DEBUG=true
-      - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost:80"]
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -22,8 +23,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:80"
+      - "80:80"
     depends_on:
       - backend
-    environment:
-      - VITE_API_URL=http://localhost:8000

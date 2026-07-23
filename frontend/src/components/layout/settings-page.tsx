@@ -16,6 +16,7 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Loader2,
 } from 'lucide-react'
 
 export function SettingsPage() {
@@ -54,6 +55,8 @@ export function SettingsPage() {
     mutationFn: (data: Record<string, unknown>) => api.updateProfile(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] })
+      queryClient.invalidateQueries({ queryKey: ['career-health'] })
+      queryClient.invalidateQueries({ queryKey: ['activities'] })
       toast({
         title: 'Profile updated',
         description: 'Your career profile has been saved successfully.',
@@ -69,6 +72,26 @@ export function SettingsPage() {
     },
   })
 
+  const clearMutation = useMutation({
+    mutationFn: () => api.clearData(),
+    onSuccess: () => {
+      // Invalidate all queries to refresh UI
+      queryClient.invalidateQueries()
+      toast({
+        title: 'Data cleared',
+        description: 'All your data has been removed successfully.',
+        variant: 'default',
+      })
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to clear data. Please try again.',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const handleSave = () => {
     updateMutation.mutate({
       full_name: formData.fullName || undefined,
@@ -78,6 +101,12 @@ export function SettingsPage() {
       skills: formData.skills.split(',').map((s) => s.trim()).filter(Boolean),
       interests: formData.interests.split(',').map((s) => s.trim()).filter(Boolean),
     })
+  }
+
+  const handleClearData = () => {
+    if (window.confirm('Are you sure you want to clear all your data? This action cannot be undone.')) {
+      clearMutation.mutate()
+    }
   }
 
   return (
@@ -202,7 +231,7 @@ export function SettingsPage() {
               <Sparkles className="w-5 h-5 text-primary" />
               <div>
                 <p className="text-sm font-medium">AI Model</p>
-                <p className="text-xs text-muted-foreground">GPT-4o-mini (fast & cost-effective)</p>
+                <p className="text-xs text-muted-foreground">Gemini 2.0 Flash (fast & cost-effective)</p>
               </div>
             </div>
             <Badge variant="secondary">Active</Badge>
@@ -221,11 +250,20 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-4">
-            Clearing your data will remove all conversations, career profiles, and uploaded documents.
+            Clearing your data will remove all conversations, career profiles, memories, and uploaded documents.
           </p>
-          <Button variant="destructive" size="sm">
-            <Trash2 className="w-4 h-4 mr-2" />
-            Clear All Data
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleClearData}
+            disabled={clearMutation.isPending}
+          >
+            {clearMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4 mr-2" />
+            )}
+            {clearMutation.isPending ? 'Clearing...' : 'Clear All Data'}
           </Button>
         </CardContent>
       </Card>

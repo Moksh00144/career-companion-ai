@@ -62,6 +62,7 @@ async def log_chat_activity(
     user: UserProfile,
     mode: str,
     content: str,
+    ai_response: str = "",
 ):
     """Log chat activity for dashboard tracking."""
     activity_map = {
@@ -77,8 +78,10 @@ async def log_chat_activity(
         session, user, act_type, title,
         description=f"{desc}: {content[:80]}..." if len(content) > 80 else desc,
     )
-    # Recalculate scores after activity
-    await scoring_service.update_scores(session, user)
+
+    # Extract AI scores from the response and update career profile
+    ai_scores = scoring_service.extract_scores_from_text(ai_response)
+    await scoring_service.update_scores(session, user, ai_scores=ai_scores)
 
 
 def _serialize_conv(conv: Conversation, msg_count: int = 0, last_message: str | None = None) -> dict:
@@ -226,7 +229,7 @@ async def get_messages(
 async def stream_chat(
     conversation_id: uuid.UUID,
     content: str = Query(..., min_length=1, max_length=4000),
-    mode: str = Query("general"),
+    mode: str = Query(None),
     session_id: str = Depends(get_session_id),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -289,8 +292,8 @@ async def stream_chat(
                 )
                 db.add(ai_message)
 
-                # Log activity and update scores
-                await log_chat_activity(db, user, mode or conversation.mode, content)
+                # Log activity and update scores (pass AI response for score extraction)
+                await log_chat_activity(db, user, mode or conversation.mode, content, ai_response=full_response)
 
                 await db.commit()
 

@@ -1,11 +1,11 @@
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import UserProfile, CareerProfile, Activity
-from app.schemas.user import UserProfileUpdate, UserProfileResponse, CareerHealthResponse, ActivityResponse
+from app.schemas.user import UserProfileUpdate
 from app.api.deps import get_session_id, get_db_session
 from app.api.v1.chat import get_or_create_user
 from app.services.scoring_service import scoring_service
@@ -41,7 +41,7 @@ async def update_profile(
     session_id: str = Depends(get_session_id),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Update user profile and recalculate scores."""
+    """Update user profile."""
     user = await get_or_create_user(db, session_id)
 
     changed = False
@@ -70,8 +70,8 @@ async def update_profile(
     user.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
-    # Recalculate scores on profile update
     if changed:
+        # Update profile-based heuristic score only (no AI scores)
         await scoring_service.update_scores(db, user)
         await scoring_service.log_activity(
             db, user, "profile_updated",
@@ -99,9 +99,9 @@ async def get_career_health(
     session_id: str = Depends(get_session_id),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Get career health scores (auto-calculated)."""
+    """Get career health scores from database (no recalculation)."""
     user = await get_or_create_user(db, session_id)
-    career = await scoring_service.update_scores(db, user)
+    career = await scoring_service.get_scores(db, user)
 
     return {
         "overall": career.overall_health or 0,
@@ -150,7 +150,18 @@ async def get_dashboard(
     session_id: str = Depends(get_session_id),
     db: AsyncSession = Depends(get_db_session),
 ):
-    """Get comprehensive dashboard data: scores + recent activity."""
+    """Get comprehensive dashboard data: scores + recent activity (from DB only)."""
     user = await get_or_create_user(db, session_id)
     data = await scoring_service.get_dashboard_data(db, user)
     return data
+
+
+@router.post("/career/clear")
+async def clear_data(
+    session_id: str = Depends(get_session_id),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Clear all user data."""
+    user = await get_or_create_user(db, session_id)
+    count = await scoring_service.clear_user_data(db, user)
+    return {"status": "cleared", "count": count}

@@ -4,18 +4,21 @@ Career Health Scoring Service for CareerForge AI.
 Calculates and updates career health scores based on:
 - User profile completeness
 - Number and quality of interactions per mode
-- Resume analysis results
-- Interview practice scores
-- Skill gap assessment
+- AI-extracted scores from chat responses
 """
+import re
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import UserProfile, CareerProfile, Activity
 from app.models.conversation import Conversation, Message
+from app.models.memory import MemoryEntry
+
+logger = logging.getLogger(__name__)
 
 
 class ScoringService:
@@ -46,75 +49,53 @@ class ScoringService:
                     score += points
         return min(score, 100)
 
-    async def calculate_interview_score(self, session: AsyncSession, user: UserProfile) -> int:
-        """Calculate interview score based on interview practice sessions."""
-        result = await session.execute(
-            select(func.count(Message.id))
-            .join(Conversation, Message.conversation_id == Conversation.id)
-            .where(Conversation.session_id == user.session_id)
-            .where(Conversation.mode == "interview")
-            .where(Message.role == "assistant")
-        )
-        message_count = result.scalar() or 0
-        return min(message_count * 10, 100)
+    def extract_scores_from_text(self, text: str) -> dict[str, int]:
+        """Extract structured scores from AI response text.
 
-    async def calculate_resume_score(self, session: AsyncSession, user: UserProfile) -> int:
-        """Calculate resume score based on resume_analysis interactions and profile data."""
-        base = 30 if user.resume_text else 0
+        Looks for patterns like:
+        - "Resume Score: 75/100"
+        - "Interview Score: 80"
+        - "Skill Gap Score: 60"
+        - "Career Readiness: 85"
+        - "Overall: 70"
 
-        result = await session.execute(
-            select(func.count(Message.id))
-            .join(Conversation, Message.conversation_id == Conversation.id)
-            .where(Conversation.session_id == user.session_id)
-            .where(Conversation.mode == "resume_analysis")
-            .where(Message.role == "assistant")
-        )
-        analysis_count = result.scalar() or 0
-
-        return min(base + (analysis_count * 15), 100)
-
-    async def calculate_skill_gap_score(self, session: AsyncSession, user: UserProfile) -> int:
-        """Calculate skill gap score based on skill_gap interactions."""
-        if not user.skills:
-            return 0
-
-        base = min(len(user.skills) * 10, 40)
-
-        result = await session.execute(
-            select(func.count(Message.id))
-            .join(Conversation, Message.conversation_id == Conversation.id)
-            .where(Conversation.session_id == user.session_id)
-            .where(Conversation.mode == "skill_gap")
-            .where(Message.role == "assistant")
-        )
-        analysis_count = result.scalar() or 0
-
-        return min(base + (analysis_count * 15), 100)
-
-    async def calculate_career_readiness(
-        self,
-        profile_score: int,
-        resume_score: int,
-        interview_score: int,
-        skill_gap_score: int,
-    ) -> int:
-        """Calculate overall career readiness score."""
-        weights = {
-            "profile": 0.25,
-            "resume": 0.30,
-            "interview": 0.25,
-            "skill_gap": 0.20,
+        Returns a dict with only the scores that were found and valid (0-100).
+        """
+        scores: dict[str, int] = {}
+        patterns = {
+            "resume_score": r"(?:resume\s*score|resume\s*rating|ats\s*score)[:\s]*(\d{1,3})",
+            "interview_score": r"(?:interview\s*score|interview\s*rating|mock\s*score)[:\s]*(\d{1,3})",
+            "skill_gap_score": r"(?:skill\s*gap\s*score|skill\s*gap\s*rating|gap\s*score)[:\s]*(\d{1,3})",
+            "career_readiness": r"(?:career\s*readiness|readiness\s*score|career\s*health)[:\s]*(\d{1,3})",
+            "overall": r"(?:overall\s*score|overall\s*health|total\s*score)[:\s]*(\d{1,3})",
         }
-        overall = (
-            profile_score * weights["profile"]
-            + resume_score * weights["resume"]
-            + interview_score * weights["interview"]
-            + skill_gap_score * weights["skill_gap"]
-        )
-        return int(overall)
 
-    async def update_scores(self, session: AsyncSession, user: UserProfile) -> CareerProfile:
-        """Recalculate and persist all career health scores."""
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    value = int(match.group(1))
+                    if 0 <= value <= 100:
+                        scores[key] = value
+                except (ValueError, IndexError):
+                    pass
+
+        if scores:
+            logger.info(f"Extracted scores from AI response: {scores}")
+        return scores
+
+    async def update_scores(
+        self,
+        session: AsyncSession,
+        user: UserProfile,
+        ai_scores: Optional[dict[str, int]] = None,
+    ) -> CareerProfile:
+        """Update career health scores.
+
+        If ai_scores is provided, those values are stored directly.
+        Otherwise, heuristic scores are calculated from profile + activity.
+        AI scores override heuristics but only for the keys provided.
+        """
         result = await session.execute(
             select(CareerProfile).where(CareerProfile.user_id == user.id)
         )
@@ -127,22 +108,70 @@ class ScoringService:
             )
             session.add(career)
 
-        profile_score = await self.calculate_profile_score(user)
-        resume_score = await self.calculate_resume_score(session, user)
-        interview_score = await self.calculate_interview_score(session, user)
-        skill_gap_score = await self.calculate_skill_gap_score(session, user)
-        overall = await self.calculate_career_readiness(
-            profile_score, resume_score, interview_score, skill_gap_score
-        )
+        # Log before state
+        before = {
+            "resume_score": career.resume_score,
+            "interview_score": career.interview_score,
+            "skill_gap_score": career.skill_gap_score,
+            "career_readiness": career.career_readiness,
+            "overall_health": career.overall_health,
+        }
 
-        career.resume_score = resume_score
-        career.interview_score = interview_score
-        career.skill_gap_score = skill_gap_score
-        career.career_readiness = overall
-        career.overall_health = overall
+        if ai_scores:
+            # AI scores: only update keys that were found, clamp 0-100
+            if "resume_score" in ai_scores:
+                career.resume_score = max(0, min(100, ai_scores["resume_score"]))
+            if "interview_score" in ai_scores:
+                career.interview_score = max(0, min(100, ai_scores["interview_score"]))
+            if "skill_gap_score" in ai_scores:
+                career.skill_gap_score = max(0, min(100, ai_scores["skill_gap_score"]))
+            if "career_readiness" in ai_scores:
+                career.career_readiness = max(0, min(100, ai_scores["career_readiness"]))
+                career.overall_health = career.career_readiness
+            elif "overall" in ai_scores:
+                career.career_readiness = max(0, min(100, ai_scores["overall"]))
+                career.overall_health = career.career_readiness
+        else:
+            # Heuristic: calculate from profile + activity counts
+            profile_score = await self.calculate_profile_score(user)
+            career.resume_score = max(0, min(100, profile_score))
+            career.interview_score = 0
+            career.skill_gap_score = 0
+            career.career_readiness = profile_score
+            career.overall_health = profile_score
+
         career.updated_at = datetime.now(timezone.utc)
-
         await session.flush()
+
+        # Log after state
+        after = {
+            "resume_score": career.resume_score,
+            "interview_score": career.interview_score,
+            "skill_gap_score": career.skill_gap_score,
+            "career_readiness": career.career_readiness,
+            "overall_health": career.overall_health,
+        }
+        logger.info(f"Score update for user {user.id}: before={before} after={after} ai_scores={ai_scores}")
+
+        return career
+
+    async def get_scores(
+        self,
+        session: AsyncSession,
+        user: UserProfile,
+    ) -> CareerProfile:
+        """Read current scores from DB without recalculating."""
+        result = await session.execute(
+            select(CareerProfile).where(CareerProfile.user_id == user.id)
+        )
+        career = result.scalar_one_or_none()
+        if not career:
+            career = CareerProfile(
+                id=uuid.uuid4(),
+                user_id=user.id,
+            )
+            session.add(career)
+            await session.flush()
         return career
 
     async def log_activity(
@@ -173,8 +202,8 @@ class ScoringService:
         session: AsyncSession,
         user: UserProfile,
     ) -> dict:
-        """Get comprehensive dashboard data including scores and recent activity."""
-        career = await self.update_scores(session, user)
+        """Get comprehensive dashboard data from DB (no recalculation)."""
+        career = await self.get_scores(session, user)
 
         activities_result = await session.execute(
             select(Activity)
@@ -203,6 +232,59 @@ class ScoringService:
                 for a in activities
             ],
         }
+
+    async def clear_user_data(
+        self,
+        session: AsyncSession,
+        user: UserProfile,
+    ) -> int:
+        """Delete all user data. Returns count of deleted items."""
+        # Delete in order: messages → conversations → memories → activities → career_profile → user_profile
+        count = 0
+
+        # Delete messages for all user conversations
+        conv_result = await session.execute(
+            select(Conversation).where(Conversation.session_id == user.session_id)
+        )
+        for conv in conv_result.scalars().all():
+            await session.execute(
+                delete(Message).where(Message.conversation_id == conv.id)
+            )
+            count += 1
+
+        # Delete conversations
+        result = await session.execute(
+            delete(Conversation).where(Conversation.session_id == user.session_id)
+        )
+        count += result.rowcount
+
+        # Delete memories
+        result = await session.execute(
+            delete(MemoryEntry).where(MemoryEntry.user_id == user.id)
+        )
+        count += result.rowcount
+
+        # Delete activities
+        result = await session.execute(
+            delete(Activity).where(Activity.user_id == user.id)
+        )
+        count += result.rowcount
+
+        # Delete career profile
+        result = await session.execute(
+            delete(CareerProfile).where(CareerProfile.user_id == user.id)
+        )
+        count += result.rowcount
+
+        # Delete user profile
+        result = await session.execute(
+            delete(UserProfile).where(UserProfile.id == user.id)
+        )
+        count += result.rowcount
+
+        await session.flush()
+        logger.info(f"Cleared {count} items for user {user.id}")
+        return count
 
 
 scoring_service = ScoringService()
